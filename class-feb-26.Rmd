@@ -1,0 +1,118 @@
+---
+title: "class-feb-26"
+author: "Liz Masten"
+date: "2/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+   
+library(readr)
+library(skimr)
+library(rstanarm)
+library(tidyverse)
+
+```
+
+```{r}
+
+#x <- load("nes.rda")
+
+#use "nes" because this isn't working 
+
+#year, partyid7, real_ideo, race_adj, age_discrete, educ1, female, income
+
+x <- nes %>% 
+  as.tibble() %>% 
+  select(year, partyid7, real_ideo, race_adj, age_discrete, educ1, female, income) %>% 
+  drop_na()
+
+#pattern of missing-ness over time 
+
+missing <- x %>% 
+  select(year, real_ideo) %>% 
+  group_by(year) %>% 
+  #we gave up, apparently 
+
+```
+
+```{r}
+
+#start modeling 
+
+table(x$partyid7)
+
+#model partyid7 ~ female 
+
+reg_1 <- glm(partyid7 ~ female, data = x) 
+
+plot_1 <- ggplot(reg_1, aes(x = female, y = partyid7)) +
+  geom_jitter() +
+  geom_smooth(method = "glm")
+
+
+#or, change female to factor to do stan_glm. Why? 
+
+#mutate(gender = as.factor(ifelse(female == 1, "female", "male")))
+
+x_bayes <- nes %>% 
+  as.tibble() %>% 
+  select(year, partyid7, real_ideo, race_adj, age_discrete, educ1, female, income) %>% 
+  drop_na() %>% 
+  mutate(gender = as.factor(ifelse(female == 1, "female", "male")))
+
+reg_bayes <- stan_glm(partyid7 ~ gender, data = x_bayes) 
+
+#how to interpret stardard error (sigma)- residual sd= party ID will be within +/- 2.1 68% of the time. 
+
+```
+
+```{r, cache=TRUE}
+
+#calculate est. for every value of data
+
+fit_1 <- stan_glm(data = x_bayes, partyid7 ~ gender, refresh = 0)
+
+
+fit_1_data <- x_bayes %>% 
+  select(partyid7, gender) %>% 
+  mutate(pred = predict(fit_1, x))
+```
+
+```{r}
+
+#race and partyid7- this is dumb because other is 1.5, so you need to make own variable as factor called race
+
+#fit_2 <- stan_glm(data = x_bayes, partyid7 ~ race_adj, refresh = 0)
+
+mod_2 <- x_bayes %>% 
+  select(race_adj, year, partyid7, real_ideo) %>% 
+  mutate(race = as.factor(case_when(race_adj == 1 ~ "white", 
+                                    race_adj == 2 ~ "black",
+                                    race_adj == 1.5 ~ "other"))) 
+
+  
+#now try our stan_glm again: 
+
+fit_2_stan <- stan_glm(data = mod_2, partyid7 ~ race, refresh = 0)
+
+#now check the model 
+
+check_fit_2 <- mod_2 %>% 
+    mutate(pred = predict(fit_2_stan, x)) 
+
+```
+
+```{r}
+
+#fit a model that analyzes ideology 
+
+fit_3_stan <- stan_glm(data = mod_2, partyid7 ~ real_ideo)
+
+check_fit_3 <- mod_2 %>% 
+  mutate(pred = predict(fit_3_stan, x))
+
+
+```
+
